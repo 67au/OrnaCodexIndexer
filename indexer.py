@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
+from collections import defaultdict
 import time
 
 import aiofiles
@@ -156,25 +157,31 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
     logger.info(f'Finished all')
                     
 
-async def build_index(input_dir: str, output_dir: str, clean: bool = False):
+async def build_index(input_dir: str, output_dir: str, clean: bool = False, base_lang: str = 'us-en'):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    for type_dir in Path(input_dir).joinpath('codex').iterdir():
-        output_index = Path(output_dir).joinpath(f'{type_dir.name}.json')
-        logger.info(f'Build {output_index} ...')
-        if not clean and output_index.exists():
-            logger.info(f'{output_index} exists, skip it')
-            continue
-        index = {}
-        for file_path in type_dir.iterdir():
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                data = json.loads(await f.read())
-                index[data['codex']] = {
-                    'name': data['name'],
-                    'description': data['description'],
-                }
-        async with aiofiles.open(output_index, 'w', encoding='utf-8') as f:
+    languages = [p.name for p in Path(input_dir).iterdir()]
+    if base_lang not in languages:
+        logger.info(f'No {base_lang} language, please download it first')
+        logger.info(f'python indexer.py --lang {base_lang} --all')
+        return
+    for interface in CODEX_INTERFACES:
+        logger.info(f'Building {interface} index...')
+        index = defaultdict(dict)
+        for lang in languages:
+            codex_sub_dir = Path(input_dir).joinpath(lang, 'codex', interface)
+            for file_path in codex_sub_dir.iterdir():
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.loads(await f.read())
+                    index[data['codex']][lang] = {
+                        'name': data['name'],
+                        'rarity': data['rarity'],
+                        'description': data['description'],
+                        'icon': data['icon'],
+                        'meta': data['meta'],
+                        'tag': data['tag'],
+                    }
+        async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.json'), 'w', encoding='utf-8') as f:
             await f.write(json.dumps(index, indent=4, ensure_ascii=False))
-            logger.info(f'Built {type_dir.name} index')
     logger.info(f'Finished all')
 
 
@@ -245,8 +252,8 @@ async def main():
         )
     if args.build_index:
         await build_index(
-            input_dir=str(codex_json_dir.joinpath(lang)),
-            output_dir=str(codex_index_dir.joinpath(lang)),
+            input_dir=str(codex_json_dir),
+            output_dir=str(codex_index_dir),
             clean=clean
         )
 
@@ -254,5 +261,5 @@ async def main():
 if __name__ == '__main__':
     import platform
     if platform.system() == 'Windows':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()) # type: ignore
     asyncio.run(main())
