@@ -1,6 +1,6 @@
 import re
 from collections import defaultdict
-from typing import Union
+from typing import Iterator, Union
 
 from lxml import etree
 
@@ -36,7 +36,7 @@ class PageParser:
     
 
     @classmethod
-    def meta_parse_iter(cls, elems: list):
+    def kv_parse_iter(cls, elems: Iterator):
         for elem in elems:
             meta = elem.xpath("string()").strip()
             matches = meta_pattern.match(meta)
@@ -58,19 +58,18 @@ class PageParser:
         icon_rarity = icon_elem.attrib['class'].strip() if icon_elem.xpath('boolean(@class)') else ''
         icon = icon_elem.attrib['src']
 
-        description_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/pre[@class="codex-page-description"]')
-        description = description_elems[0].text if description_elems else ''
-
-        description_tag_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-description"]')
+        description_pre_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/pre[contains(@class,"codex-page-description")]')
+        description_div_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[contains(@class,"codex-page-description")]')
+        description = [text for text in cls.kv_parse_iter((*description_pre_elems, *description_div_elems))]
 
         meta_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-meta"]')
-        meta = list((*cls.meta_parse_iter(description_tag_elems), *cls.meta_parse_iter(meta_elems)))
+        meta = list(cls.kv_parse_iter(meta_elems))
 
         tag_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-tag"]')
-        tag = list(cls.meta_parse_iter(tag_elems))
+        tag = list(cls.kv_parse_iter(tag_elems))
 
         stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[contains(@class,"codex-stat")]')
-        stat = list(cls.meta_parse_iter(stat_elems))
+        stat = list(cls.kv_parse_iter(stat_elems))
 
         drop_elems = page.xpath(
             '/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/h4'
