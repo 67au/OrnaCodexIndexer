@@ -1,4 +1,5 @@
 .vscode/launch.json
-playorna/*
-codex_parser/__pycache__/*
-network/__pycache__/*
+playorna
+venv
+codex_parser/__pycache__
+network/__pycache__
