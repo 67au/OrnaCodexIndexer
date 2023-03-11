@@ -66,7 +66,7 @@ class PageParser:
         meta_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-meta"]')
         meta = list((*cls.meta_parse_iter(description_tag_elems), *cls.meta_parse_iter(meta_elems)))
 
-        stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[@class="codex-stat"]')
+        stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[contains(@class,"codex-stat")]')
         stat = list(cls.meta_parse_iter(stat_elems))
 
         drop_elems = page.xpath(
