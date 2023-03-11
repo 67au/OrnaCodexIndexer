@@ -8,5 +8,6 @@ class CodexType:
     icon: str
     description: str
     meta: list
+    tag: list
     stat: list
     drop: dict

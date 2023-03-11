@@ -7,9 +7,9 @@ from lxml import etree
 from .codex_types import CodexType
 
 EFFECT_PATTERN = r'(?P<EFFECT>.+) \((?P<CHANCE>\d+%)\)'
-effect_pattern = re.compile(EFFECT_PATTERN)
+effect_pattern = re.compile(pattern=EFFECT_PATTERN)
 META_PATTERN = r'(?P<KEY>.+): (?P<VALUE>.+)'
-meta_pattern = re.compile(META_PATTERN)
+meta_pattern = re.compile(pattern=META_PATTERN)
 
 class PageParser:
 
@@ -66,6 +66,9 @@ class PageParser:
         meta_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-meta"]')
         meta = list((*cls.meta_parse_iter(description_tag_elems), *cls.meta_parse_iter(meta_elems)))
 
+        tag_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-tag"]')
+        tag = list(cls.meta_parse_iter(tag_elems))
+
         stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[contains(@class,"codex-stat")]')
         stat = list(cls.meta_parse_iter(stat_elems))
 
@@ -83,6 +86,7 @@ class PageParser:
                 'icon': icon,
                 'description': description,
                 'meta': meta,
+                'tag': tag,
                 'stat': stat,
                 'drop': drop,
             }
@@ -94,6 +98,7 @@ class PageParser:
                 icon=icon,
                 description=description,
                 meta=meta,
+                tag=tag,
                 stat=stat,
                 drop=drop,
             )
