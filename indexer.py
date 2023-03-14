@@ -114,7 +114,6 @@ async def parse_codex(input_dir: str, output_dir: str, clean: bool = False):
                     continue
             async with aiofiles.open(output_type_dir.joinpath(f'{file_path.stem}.json'), 'w', encoding='utf-8') as output:
                 await output.write(json.dumps(data_out, indent=4, ensure_ascii=False)) # type: ignore
-                logger.info(f'Parsed {file_path}')
     logger.info(f'Finished all')
 
 
@@ -157,31 +156,26 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
     logger.info(f'Finished all')
                     
 
-async def build_index(input_dir: str, output_dir: str, clean: bool = False, base_lang: str = 'us-en'):
+async def build_index(input_dir: str, output_dir: str, clean: bool = False, lang: str = 'us-en'):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    languages = [p.name for p in Path(input_dir).iterdir()]
-    if base_lang not in languages:
-        logger.info(f'No {base_lang} language, please download it first')
-        logger.info(f'python indexer.py --lang {base_lang} --all')
-        return
     for interface in CODEX_INTERFACES:
         logger.info(f'Building {interface} index...')
-        index = defaultdict(dict)
-        for lang in languages:
-            codex_sub_dir = Path(input_dir).joinpath(lang, 'codex', interface)
-            for file_path in codex_sub_dir.iterdir():
-                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.loads(await f.read())
-                    index[data['codex']][lang] = {
-                        'name': data['name'],
-                        'rarity': data['rarity'],
-                        'description': data['description'],
-                        'icon': data['icon'],
-                        'meta': data['meta'],
-                        'tag': data['tag'],
-                    }
+        index = []
+        codex_sub_dir = Path(input_dir).joinpath(lang, 'codex', interface)
+        for file_path in codex_sub_dir.iterdir():
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                data = json.loads(await f.read())
+                index.append({
+                    'name': data['name'],
+                    'rarity': data['rarity'],
+                    'description': data['description'],
+                    'codex': data['codex'],
+                    'icon': data['icon'],
+                    'meta': [{item: True} if isinstance(item, str) else {item[0]: item[1]} for item in data['meta']],
+                    'tag': data['tag'],
+                })
         async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(index, indent=4, ensure_ascii=False))
+            await f.write(json.dumps({'total': len(index), 'row': index}, indent=4, ensure_ascii=False))
     logger.info(f'Finished all')
 
 
@@ -254,6 +248,7 @@ async def main():
         await build_index(
             input_dir=str(codex_json_dir),
             output_dir=str(codex_index_dir),
+            lang=lang,
             clean=clean
         )
 

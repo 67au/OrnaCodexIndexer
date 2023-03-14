@@ -6,7 +6,7 @@ class CodexType:
     name: str
     rarity: str
     icon: str
-    description: list
+    description: str
     meta: list
     tag: list
     stat: list

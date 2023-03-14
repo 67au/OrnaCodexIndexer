@@ -1,15 +1,15 @@
 import re
 from collections import defaultdict
-from typing import Iterator, Union
+from typing import Iterator, Tuple, Union
 
 from lxml import etree
 
 from .codex_types import CodexType
 
 EFFECT_PATTERN = r'(?P<EFFECT>.+) \((?P<CHANCE>\d+%)\)'
-effect_pattern = re.compile(pattern=EFFECT_PATTERN)
-META_PATTERN = r'(?P<KEY>.+): (?P<VALUE>.+)'
-meta_pattern = re.compile(pattern=META_PATTERN)
+effect_pattern = re.compile(pattern=EFFECT_PATTERN) # type: ignore
+META_PATTERN = r'(?P<KEY>.+)(:|：) (?P<VALUE>.+)'
+meta_pattern = re.compile(pattern=META_PATTERN) # type: ignore
 
 class PageParser:
 
@@ -46,6 +46,20 @@ class PageParser:
                 yield meta
 
     @classmethod
+    def description_parse(cls, pre_elems: list, div_elems: list, codex_type: str) -> Tuple[str, list, list]:
+        description = pre_elems[0].xpath("string()").strip() if len(pre_elems) > 0 else ''
+        meta_extra = []
+        stat_extra = []
+        if codex_type in {'items'} and len(div_elems) > 0:
+            stat_extra = [[div_elems[0].xpath("preceding-sibling::div[1]")[0].xpath("string()").strip(), div_elems[0].xpath("string()").strip()]]
+        if codex_type in {'bosses', 'monster'} and len(div_elems) > 0:
+            meta_extra = list(cls.kv_parse_iter(div_elems)) # type: ignore
+        if codex_type in {'followers', 'raids', 'spells', 'classes'} and len(div_elems) > 0:
+            description = div_elems[0].xpath("string()").strip()
+            meta_extra = list(cls.kv_parse_iter(div_elems[1:])) # type: ignore
+        return description, meta_extra, stat_extra
+
+    @classmethod
     def parse(cls, html: str, codex: str, raw_dict: bool = False) -> Union[dict, CodexType, None]:
         parser = etree.HTMLParser(encoding='utf-8')
         page = etree.HTML(html, parser=parser)
@@ -60,16 +74,16 @@ class PageParser:
 
         description_pre_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/pre[contains(@class,"codex-page-description")]')
         description_div_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[contains(@class,"codex-page-description")]')
-        description = [text for text in cls.kv_parse_iter((*description_pre_elems, *description_div_elems))]
+        description, meta_extra, stat_extra = cls.description_parse(description_pre_elems, description_div_elems, codex.split('/')[2])
 
         meta_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-meta"]')
-        meta = list(cls.kv_parse_iter(meta_elems))
+        meta = meta_extra + list(cls.kv_parse_iter(meta_elems))
 
         tag_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-tag"]')
         tag = list(cls.kv_parse_iter(tag_elems))
 
         stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[contains(@class,"codex-stat")]')
-        stat = list(cls.kv_parse_iter(stat_elems))
+        stat = list(cls.kv_parse_iter(stat_elems)) + stat_extra
 
         drop_elems = page.xpath(
             '/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/h4'
