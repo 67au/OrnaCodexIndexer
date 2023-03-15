@@ -52,7 +52,7 @@ class PageParser:
         stat_extra = []
         if codex_type in {'items'} and len(div_elems) > 0:
             stat_extra = [[div_elems[0].xpath("preceding-sibling::div[1]")[0].xpath("string()").strip(), div_elems[0].xpath("string()").strip()]]
-        if codex_type in {'bosses', 'monster'} and len(div_elems) > 0:
+        if codex_type in {'bosses', 'monsters'} and len(div_elems) > 0:
             meta_extra = list(cls.kv_parse_iter(div_elems)) # type: ignore
         if codex_type in {'followers', 'raids', 'spells', 'classes'} and len(div_elems) > 0:
             description = div_elems[0].xpath("string()").strip()
