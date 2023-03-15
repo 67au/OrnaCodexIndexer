@@ -106,8 +106,9 @@ async def parse_codex(input_dir: str, output_dir: str, clean: bool = False):
                 continue
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as input:
                 data_in = await input.read()
-                data_out = await asyncio.to_thread(
-                    PageParser.parse, data_in, '/'.join(['', *file_path.parts[-3:-1], file_path.stem, '']), raw_dict=True
+                loop = asyncio.get_event_loop()
+                data_out = await loop.run_in_executor(
+                    None, PageParser.parse, data_in, '/'.join(['', *file_path.parts[-3:-1], file_path.stem, '']), True
                 )
                 if data_out is None:
                     logger.info(f'Parse {file_path} failed')
@@ -144,8 +145,9 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
             logger.info(f'Parsing {file_path}...')
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as input:
                 data_in = await input.read()
-                data_out = await asyncio.to_thread(
-                    PageParser.parse, data_in, '/'.join(['', *file_path.parts[-3:-1], file_path.stem, '']), raw_dict=True
+                loop = asyncio.get_event_loop()
+                data_out = await loop.run_in_executor(
+                    None, PageParser.parse, data_in, '/'.join(['', *file_path.parts[-3:-1], file_path.stem, '']), True
                 )
                 if data_out is None:
                     logger.info(f'Parse {file_path} failed')
