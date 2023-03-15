@@ -158,26 +158,30 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
     logger.info(f'Finished all')
                     
 
-async def build_index(input_dir: str, output_dir: str, clean: bool = False, lang: str = 'us-en'):
+async def build_index(input_dir: str, output_dir: str, clean: bool = False):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     for interface in CODEX_INTERFACES:
         logger.info(f'Building {interface} index...')
-        index = []
-        codex_sub_dir = Path(input_dir).joinpath(lang, 'codex', interface)
+        data_list = []
+        index = {'meta': set(), 'tag': set()}
+        codex_sub_dir = Path(input_dir).joinpath('codex', interface)
         for file_path in codex_sub_dir.iterdir():
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 data = json.loads(await f.read())
-                index.append({
+                index['meta'].update(i[0] if isinstance(i, list) else i for i in data['meta'])
+                index['tag'].update(i.replace(' ', '_') for i in data['tag'])
+                data_list.append({
                     'name': data['name'],
                     'rarity': data['rarity'],
                     'description': data['description'],
                     'codex': data['codex'],
                     'icon': data['icon'],
-                    'meta': [{item: True} if isinstance(item, str) else {item[0]: item[1]} for item in data['meta']],
-                    'tag': data['tag'],
+                    'meta': dict(data['meta']),
+                    'tag': ' | '.join(i.replace(' ', '_') for i in data['tag']),
                 })
+        index['meta'], index['tag'] = list(index['meta']), list(index['tag'])
         async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps({'total': len(index), 'row': index}, indent=4, ensure_ascii=False))
+            await f.write(json.dumps({'index': index, 'data': data_list}, indent=4, ensure_ascii=False))
     logger.info(f'Finished all')
 
 
@@ -248,9 +252,8 @@ async def main():
         )
     if args.build_index:
         await build_index(
-            input_dir=str(codex_json_dir),
-            output_dir=str(codex_index_dir),
-            lang=lang,
+            input_dir=str(codex_json_dir.joinpath(lang)),
+            output_dir=str(codex_index_dir.joinpath(lang)),
             clean=clean
         )
 
