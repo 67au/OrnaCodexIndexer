@@ -252,7 +252,7 @@ async def build_database(input_dir: str, output_db: str):
 
 async def main():
     parser = argparse.ArgumentParser('Orna Codex Indexer')
-    parser.add_argument('--clean', action='store_true', help='fetch again and overwrite')
+    parser.add_argument('--clean', action='store_true', help='remove data before fetch')
     parser.add_argument('--lang', type=str, default='us-en', help='download language')
     parser.add_argument('--data-dir', type=str, default='playorna', help='data directory')
 

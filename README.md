@@ -16,7 +16,7 @@ usage: Orna Codex Indexer [-h] [--clean] [--lang LANG]
 
 options:
   -h, --help           show this help message and exit
-  --clean              fetch again and overwrite
+  --clean              remove data before fetch
   --lang LANG          download language
   --data-dir DATA_DIR  data directory
   --fetch-meta         fetch meta data
