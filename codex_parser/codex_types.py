@@ -10,4 +10,4 @@ class CodexType:
     meta: list
     tag: list
     stat: list
-    drop: dict
+    drop: list

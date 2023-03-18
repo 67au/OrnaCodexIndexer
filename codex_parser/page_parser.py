@@ -6,49 +6,50 @@ from lxml import etree
 
 from .codex_types import CodexType
 
+SPLIT_PATTERN = r':|：'
+STRIP_PATTERN = ''.join(SPLIT_PATTERN)
 EFFECT_PATTERN = r'(?P<EFFECT>.+) \((?P<CHANCE>\d+%)\)'
 effect_pattern = re.compile(pattern=EFFECT_PATTERN) # type: ignore
-KV_PATTERN = r'(?P<KEY>.+)(:|：) (?P<VALUE>.+)'
+KV_PATTERN = rf'(?P<KEY>.+)({SPLIT_PATTERN}) (?P<VALUE>.+)'
 kv_pattern = re.compile(pattern=KV_PATTERN) # type: ignore
 
 class PageParser:
 
     @classmethod
-    def drop_parse(cls, elems: list) -> dict:
-        drop = defaultdict(list)
-        handler = []
+    def drop_parse(cls, elems: list) -> list:
+        drop = []
+        data = []
         for elem in elems:
             if elem.tag == 'h4':
-                drop_header = elem.text.strip(':')
-                drop[drop_header] = []
-                handler = drop[drop_header]
+                drop_header = elem.text.strip(STRIP_PATTERN)
+                data = []
+                drop.append({'name': drop_header, 'base': data})
             elif elem.attrib.get('class') == 'drop':
                 drop_str = elem.xpath("string()").strip() 
-                icon = elem.xpath('img')[0].attrib.get('src')
+                icon = elem.xpath('img')[0].attrib.get('src')[31:]
                 ability = elem.xpath('../div[@class="emph"]')
+                matches = effect_pattern.match(drop_str)
                 if elem.tag == 'a':
-                    handler.append({
-                        'href': elem.attrib.get('href'), 
+                    data.append({
+                        'codex': elem.attrib.get('href'), 
                         'name': drop_str,
                         'icon': icon,
                     })
+                elif matches:
+                    data.append({
+                        'name':matches.group('EFFECT'), 
+                        'chance': matches.group('CHANCE'),
+                        'icon': icon,
+                    })
+                elif ability:
+                    data.append({
+                        'name': drop_str, 
+                        'icon': icon,
+                        'ability': ability[0].xpath("string()").strip(),
+                    })
                 else:
-                    matches = effect_pattern.match(drop_str)
-                    if matches:
-                        handler.append({
-                            'name':matches.group('EFFECT'), 
-                            'chance': matches.group('CHANCE'),
-                            'icon': icon,
-                        })
-                    elif ability:
-                        handler.append({
-                            'name': drop_str, 
-                            'icon': icon,
-                            'ability': ability[0].xpath("string()").strip(),
-                        })
-                    else:
-                        handler.append({'name': drop_str, 'icon': icon})
-        return dict(drop)
+                    data.append({'name': drop_str, 'icon': icon})
+        return drop
     
 
     @classmethod
@@ -57,49 +58,52 @@ class PageParser:
             kv = elem.xpath("string()").strip()
             matches = kv_pattern.match(kv)
             if matches:
-                yield ['_'.join(matches.group('KEY').split()), matches.group('VALUE')]
+                yield {'name': matches.group('KEY'), 'base': matches.group('VALUE')}
             else:
-                yield kv
+                yield {'name': kv}
     
     @classmethod
     def meta_parse_iter(cls, elems: list):
         for elem in elems:
             span = elem.xpath('span')
             if len(span) > 0 and span[0].xpath('boolean(@class="exotic")'):
-                yield ['exotic', span[0].xpath("string()").strip()]
+                yield {'name': 'exotic', 'base': span[0].xpath("string()").strip()}
                 continue
             meta = elem.xpath("string()").strip()
             matches = kv_pattern.match(meta)
             if matches:
-                yield ['_'.join(matches.group('KEY').split()), matches.group('VALUE')]
+                yield {'name': matches.group('KEY'), 'base': matches.group('VALUE')}
             else:
-                yield meta
+                yield {'name': meta}
 
     @classmethod
     def stat_parse_iter(cls, elems: list):
         for elem in elems:
             stats = elem.attrib.get('class').split()
             if len(stats) > 1:
-                yield [f'element:{stats[1]}', elem.xpath("string()").strip()]
+                yield {'name': elem.xpath("string()").strip(), 'element': stats[1], }
                 continue
-            meta = elem.xpath("string()").strip()
-            matches = kv_pattern.match(meta)
+            stat = elem.xpath("string()").strip()
+            matches = kv_pattern.match(stat)
             if matches:
-                yield ['_'.join(matches.group('KEY').split()), matches.group('VALUE')]
+                yield {'name': matches.group('KEY'), 'base': matches.group('VALUE')}
             else:
-                yield meta
+                yield {'name': stat}
 
     @classmethod
-    def description_parse(cls, pre_elems: list, div_elems: list, codex_type: str) -> Tuple[str, list, list]:
+    def description_parse(cls, pre_elems: list, div_elems: list, codex_type: str) -> Tuple[str, list, dict]:
         description = pre_elems[0].xpath("string()").strip() if len(pre_elems) > 0 else ''
         meta_extra = []
-        offhand = []
+        offhand = {}
         if codex_type in {'items'} and len(div_elems) > 0:
-            ability = div_elems[0].xpath("preceding-sibling::div[1]")[0].xpath("string()").strip().split(':')
-            offhand = [ability[0], [{
-                'name': ability[1],
-                'ability': div_elems[0].xpath("string()").strip(),
-            }]]
+            ability = re.split(SPLIT_PATTERN, div_elems[0].xpath("preceding-sibling::div[1]")[0].xpath("string()").strip())
+            offhand = {
+                'name': ability[0],
+                'base': [{
+                    'name': ability[1].strip(),
+                    'ability': div_elems[0].xpath("string()").strip(),
+                }]
+            }
         if codex_type in {'bosses', 'monsters'} and len(div_elems) > 0:
             meta_extra = list(cls.kv_parse_iter(div_elems)) # type: ignore
         if codex_type in {'followers', 'raids', 'spells', 'classes'} and len(div_elems) > 0:
@@ -128,7 +132,7 @@ class PageParser:
         meta = meta_extra + list(cls.meta_parse_iter(meta_elems))
 
         tag_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]//div[@class="codex-page-tag"]')
-        tag = [i[2:] for i in cls.kv_parse_iter(tag_elems)]
+        tag = [{'name': i['name'][2:]} for i in cls.kv_parse_iter(tag_elems)]
 
         stat_elems = page.xpath('/html/body/div[@class="wraps"]/div[@class="page"]/div[@class="codex-page"]/div[@class="codex-stats"]//div[contains(@class,"codex-stat")]')
         stat = list(cls.stat_parse_iter(stat_elems))
@@ -139,7 +143,7 @@ class PageParser:
         )
         drop = cls.drop_parse(drop_elems)
         if offhand:
-            drop[offhand[0]] = offhand[1]
+            drop.append(offhand)
 
         if raw_dict:
             return {
