@@ -169,19 +169,20 @@ async def build_index(input_dir: str, output_dir: str, base_lang: str = 'us-en')
         for file_path in input_subdir.iterdir():
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 data = json.loads(await f.read())
-            index[data['codex']] = {
+            codex = data['codex'].strip('/').split('/')[-1]
+            index[codex] = {
                 'name': data['name'],
                 'rarity': data['rarity'],
                 'icon': data['icon'],
                 'description': data['description'],
             }
             for s in data.get('meta', []):
-                meta[s['name']][s['base']].append(data['codex'])
+                meta[s['name']][s['base']].append(codex)
             for t in data.get('tag', []):
-                tag[t['name']].append(data['codex'])
+                tag[t['name']].append(codex)
             for d in data.get('drop', []):
                 for base in d.get('base', []):
-                    drop[d['name']][base['codex' if base.get('codex') else 'name']].append(data['codex'])
+                    drop[d['name']][base['codex' if base.get('codex') else 'name']].append(codex)
         async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.index.json'), 'w', encoding='utf-8') as f:
             await f.write(json.dumps(index, indent=4, ensure_ascii=False))
         async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.meta.json'), 'w', encoding='utf-8') as f:
