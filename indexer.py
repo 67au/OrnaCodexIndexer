@@ -142,6 +142,9 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
         async with OrnaCodexClient.Client(lang=lang) as client:
             await _fetch_codex(client, codex_dir, {'name': item['name'], 'codex': item['href']}, asyncio.Semaphore(1), clean)
             file_path = Path(codex_dir).joinpath(f'{item["href"].strip("/")}.html')
+            if not file_path.exists():
+                logger.info(f'Fetch {item["href"]} failed')
+                continue
             logger.info(f'Parsing {file_path}...')
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as input:
                 data_in = await input.read()
