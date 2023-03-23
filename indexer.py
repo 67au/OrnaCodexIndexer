@@ -151,6 +151,9 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
         async with OrnaCodexClient.Client(lang=lang) as client:
             await _fetch_codex(client, codex_dir, {'name': item['name'], 'codex': item['codex']}, asyncio.Semaphore(1))
             file_path = Path(codex_dir).joinpath(f'{item["codex"].strip("/")}.html')
+            if not file_path.exists():
+                logger.info(f'Fetch {item["name"]}(href: "{item["codex"]}") failed')
+                continue
             logger.info(f'Parsing {file_path}...')
             await _parse_codex(file_path, Path(json_dir).joinpath(f'{item["codex"].strip("/")}.json'), asyncio.Semaphore(1))
     logger.info(f'Finished all')
@@ -162,7 +165,7 @@ async def build_index(input_dir: str, output_dir: str, base_lang: str = 'us-en')
     for interface in CODEX_INTERFACES:
         logger.info(f'Building {interface} Index...')
         input_subdir = Path(base_dir).joinpath('codex', interface)
-        index = {}
+        index = []
         meta = defaultdict(lambda: defaultdict(list))
         tag = defaultdict(list)
         drop = defaultdict(lambda: defaultdict(list))
@@ -170,12 +173,13 @@ async def build_index(input_dir: str, output_dir: str, base_lang: str = 'us-en')
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 data = json.loads(await f.read())
             codex = data['codex'].strip('/').split('/')[-1]
-            index[codex] = {
+            index.append({
                 'name': data['name'],
                 'rarity': data['rarity'],
                 'icon': data['icon'],
                 'description': data['description'],
-            }
+                'codex': codex,
+            })
             for s in data.get('meta', []):
                 meta[s['name']][s['base']].append(codex)
             for t in data.get('tag', []):
@@ -212,7 +216,7 @@ async def build_translation(input_dir: str, output_dir: str, base_lang: str = 'u
                 async with aiofiles.open(Path(input_dir).joinpath(lang, f'{codex.strip("/")}.json'), 'r', encoding='utf-8') as f:
                     lang_data = json.loads(await f.read())
                 index[lang][codex] = [
-                    lang_data['name'], '', '', lang_data['description'],
+                    lang_data['name'], lang_data['description'],
                 ]
                 for b, l in zip(base_data.get('meta', []), lang_data.get('meta', [])):
                     meta[lang][b['name']] = l['name']
@@ -326,7 +330,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    import platform
-    if platform.system() == 'Windows':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()) # type: ignore
     asyncio.run(main())
