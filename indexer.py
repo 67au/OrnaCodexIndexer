@@ -11,6 +11,7 @@ from loguru import logger
 
 from codex_parser import PageParser, IndexParser
 from network import OrnaGuideClient, OrnaCodexClient
+from index_filter import Filters
 
 
 GUIDE_INTERFACES = ['item', 'monster', 'pet']
@@ -160,92 +161,115 @@ async def check_miss_codex(json_dir: str, codex_dir: str, lang: str, clean: bool
 
 
 async def build_index(input_dir: str, output_dir: str, base_lang: str = 'us-en'):
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    Path(output_dir).joinpath(base_lang).mkdir(parents=True, exist_ok=True)
     base_dir = Path(input_dir).joinpath(base_lang)
     for interface in CODEX_INTERFACES:
         logger.info(f'Building {interface} Index...')
         input_subdir = Path(base_dir).joinpath('codex', interface)
-        index = []
-        meta = defaultdict(lambda: defaultdict(list))
-        tag = defaultdict(list)
-        drop = defaultdict(lambda: defaultdict(list))
+        index = {}
+        filters = defaultdict(dict)
         for file_path in input_subdir.iterdir():
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 data = json.loads(await f.read())
             codex = data['codex'].strip('/').split('/')[-1]
-            index.append({
+            index_data = {
                 'name': data['name'],
+                'codex': data['codex'],
                 'rarity': data['rarity'],
-                'icon': data['icon'],
-                'description': data['description'],
-                'codex': codex,
-            })
-            for s in data.get('meta', []):
-                meta[s['name']][s['base']].append(codex)
-            for t in data.get('tag', []):
-                tag[t['name']].append(codex)
+                'icon': data['icon'].split('/img/')[-1],
+                'tag': data['tag'],
+                'meta': {},
+                'stat': {},
+                'drop': {},
+            }
+            for m in data.get('meta', []):
+                name = m['name'].lower().replace(' ', '_')
+                index_data['meta'][name] = m['base']
+                filters['meta'][name] = m['name']
+            index_data['tag'] = [t['name'] for t in data.get('tag', [])]
             for d in data.get('drop', []):
-                for base in d.get('base', []):
-                    drop[d['name']][base['codex' if base.get('codex') else 'name']].append(codex)
-        async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.index.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(index, indent=4, ensure_ascii=False))
-        async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.meta.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(meta, indent=4, ensure_ascii=False))
-        async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.tag.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(tag, indent=4, ensure_ascii=False))
-        async with aiofiles.open(Path(output_dir).joinpath(f'{interface}.drop.json'), 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(drop, indent=4, ensure_ascii=False))
+                name = d['name'].lower().replace(' ', '_')
+                tmp = []
+                for c in d['base']:
+                    if c.get('codex'):
+                        tmp.append(c['codex'].strip('/').split('/')[-2:])
+                    elif c.get('chance'):
+                        tmp.append([c['name'], c['chance']])
+                    elif c.get('ability'):
+                        tmp.append([c['name'], c['ability']])
+                    else:
+                        tmp.append(c['name'])
+                index_data['drop'][name] = tmp
+                filters['drop'][name] = d['name']
+            for s in data.get('stat', []):
+                name = s['name'].lower().replace(' ', '_')
+                index_data['stat'][name] = s['base'] if s.get('base') else s['name']
+                filters['stat'][name] = s['name']
+            index[codex] = index_data
+        async with aiofiles.open(Path(output_dir).joinpath(base_lang, f'{interface}.json'), 'w', encoding='utf-8') as f:
+            await f.write(json.dumps({'filters': dict(filters), 'index': dict(index)}, indent=4, ensure_ascii=False))
 
-async def build_translation(input_dir: str, output_dir: str, base_lang: str = 'us-en'):
-    translation_dir = Path(output_dir).joinpath('translation')
-    translation_dir.mkdir(parents=True, exist_ok=True)
-    base_dir = Path(input_dir).joinpath(base_lang)
-    langs = [x.name for x in Path(input_dir).iterdir() if x.is_dir() and x.name != base_lang]
-    for interface in CODEX_INTERFACES:
-        logger.info(f'Building {interface} Translation...')
-        index = defaultdict(lambda: defaultdict(list))
-        meta = defaultdict(dict)
-        stat = defaultdict(dict)
-        tag = defaultdict(dict)
-        drop = defaultdict(dict)
-        for base in base_dir.joinpath('codex', interface).iterdir():
-            async with aiofiles.open(base, 'r', encoding='utf-8') as f:
-                base_data = json.loads(await f.read())
-            codex = base_data['codex']
-            for lang in langs:
-                async with aiofiles.open(Path(input_dir).joinpath(lang, f'{codex.strip("/")}.json'), 'r', encoding='utf-8') as f:
-                    lang_data = json.loads(await f.read())
-                index[lang][codex] = [
-                    lang_data['name'], lang_data['description'],
-                ]
-                for b, l in zip(base_data.get('meta', []), lang_data.get('meta', [])):
-                    meta[lang][b['name']] = l['name']
-                    if b['base'] == l['base']:
-                        continue
-                    meta[lang][b['base']] = l['base']
-                for b, l in zip(base_data.get('stat', []), lang_data.get('stat', [])):
-                    stat[lang][b['name']] = l['name']
-                    if b.get('base') != l.get('base'):
-                        stat[lang][b['base']] = l['base']
-                for b, l in zip(base_data.get('tag', []), lang_data.get('tag', [])):
-                    tag[lang][b['name']] = l['name']
-                for b, l in zip(base_data.get('drop', []), lang_data.get('drop', [])):
-                    drop[lang][b['name']] = l['name']
-                    for bb, ll in zip(b.get('base', []), l.get('base', [])):
-                        if bb.get('codex') or bb['name'] == ll['name']:
-                            continue
-                        drop[lang][bb['name']] = ll['name']
-        for lang in langs:
-            logger.info(f'Writing {interface} Translation for {lang}...')
-            async with aiofiles.open(translation_dir.joinpath(f'{interface}.{lang}.json'), 'w', encoding='utf-8') as f:
-                await f.write(json.dumps({
-                    'index': index[lang],
-                    'meta': meta[lang],
-                    'stat': stat[lang],
-                    'tag': tag[lang],
-                    'drop': drop[lang],
-                }, indent=4, ensure_ascii=False))
 
+async def build_translated_index(input_dir: str, output_dir: str, base_lang: str = 'us-en'):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    base_dir = Path(output_dir).joinpath(base_lang)
+    languages = [d.name for d in Path(input_dir).iterdir() if d.name != base_lang]
+    for base_file in base_dir.iterdir():
+        interface = base_file.stem
+        logger.info(f'Building {interface} Other Languages Index...')
+        async with aiofiles.open(base_file, 'r', encoding='utf-8') as f:
+            base_data = json.loads(await f.read())
+        for lang in languages:
+            output_subdir = Path(output_dir).joinpath(lang)
+            output_subdir.mkdir(parents=True, exist_ok=True)
+            filters = defaultdict(dict)
+            index = {}
+            for key, value in base_data['index'].items():
+                async with aiofiles.open(Path(input_dir).joinpath(lang, 'codex', interface, f'{key}.json'), 'r', encoding='utf-8') as f:
+                    data = json.loads(await f.read())
+                index_data = {
+                    'name': data['name'],
+                    'codex': data['codex'],
+                    'rarity': data['rarity'],
+                    'icon': data['icon'].split('/img/')[-1],
+                    'tag': data['tag'],
+                    'meta': {},
+                    'stat': {},
+                    'drop': {},
+                }
+                for b, l in zip(value['meta'].items(), data.get('meta', [])):
+                    name = b[0]
+                    index_data['meta'][name] = l['base']
+                    filters['meta'][name] = l['name']
+                index_data['tag'] = [t['name'] for t in data.get('tag', [])]
+                for b, l in zip(value['drop'].items(), data.get('drop', [])):
+                    name = b[0]
+                    tmp = []
+                    for c in l['base']:
+                        if c.get('codex'):
+                            tmp.append(c['codex'].strip('/').split('/')[-2:])
+                        elif c.get('chance'):
+                            tmp.append([c['name'], c['chance']])
+                        elif c.get('ability'):
+                            tmp.append([c['name'], c['ability']])
+                        else:
+                            tmp.append(c['name'])
+                    index_data['drop'][name] = tmp
+                    filters['drop'][name] = l['name']
+                for b, l in zip(value['stat'].items(), data.get('stat', [])):
+                    name = b[0]
+                    index_data['stat'][name] = l['base'] if l.get('base') else l['name']
+                    filters['stat'][name] = l['name']
+                index[key] = index_data
+            async with aiofiles.open(output_subdir.joinpath(f'{interface}.json'), 'w', encoding='utf-8') as f:
+                await f.write(json.dumps({'filters': dict(filters), 'index': dict(index)}, indent=4, ensure_ascii=False))
+
+
+async def fetch_codex_index(lang: str, output_dir: str):
+    async with OrnaCodexClient.Client(lang=lang) as client:
+        r = await client.fetch_codex_index()
+        d = IndexParser.parse_codex_index(r)
+        print(d)
 
 async def build_database(input_dir: str, output_db: str):
     # ToDo: build database
@@ -323,11 +347,10 @@ async def main():
             input_dir=str(codex_json_dir),
             output_dir=str(codex_index_dir),
         )
-        await build_translation(
+        await build_translated_index(
             input_dir=str(codex_json_dir),
             output_dir=str(codex_index_dir),
         )
-
 
 if __name__ == '__main__':
     asyncio.run(main())

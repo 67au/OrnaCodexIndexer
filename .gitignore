@@ -3,3 +3,4 @@ playorna
 venv
 codex_parser/__pycache__
 network/__pycache__
+index_filter/__pycache__

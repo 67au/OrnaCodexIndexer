@@ -40,6 +40,10 @@ class Client:
                 return
             page += 1
 
+    async def fetch_codex_index(self) -> Optional[str]:
+        r: Response = await self.fetch(f'/codex/', raw=True)
+        return r.text if r.status_code == 200 else None
+
     async def close(self):
         await self._client.aclose()
 
