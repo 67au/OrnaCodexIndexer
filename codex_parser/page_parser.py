@@ -58,7 +58,11 @@ class PageParser:
             kv = elem.xpath("string()").strip()
             matches = kv_pattern.match(kv)
             if matches:
-                yield {'name': matches.group('KEY'), 'base': matches.group('VALUE')}
+                value = matches.group('VALUE')
+                # fix event sort
+                if elem.xpath('contains(@class, "codex-page-description-highlight")'):
+                    value = ' / '.join(sorted(i.strip() for i in value.split('/')))
+                yield {'name': matches.group('KEY'), 'base': value}
             else:
                 yield {'name': kv}
     
